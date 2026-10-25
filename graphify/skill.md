@@ -59,6 +59,8 @@ Follow these steps in order. Do not skip steps.
 
 First: write the resolved absolute path to scan into a file named `.graphify_input_path` using your file-writing tool - the exact path bytes, nothing else. Every later step reads the path from that file, so it is never pasted into code or a command line and quoting can never break it.
 
+`.graphify_input_path` is machine-specific scratch state. Add `.graphify_*` to the project's `.gitignore` so it never gets committed.
+
 ```bash
 python3 -c "import graphify" 2>/dev/null || pip install graphifyy -q --break-system-packages 2>&1 | tail -3
 ```
@@ -72,7 +74,9 @@ python3 -c "
 import json
 from graphify.detect import detect
 from pathlib import Path
-SCAN_ROOT = Path('.graphify_input_path').read_text().rstrip('\n')
+SCAN_ROOT = Path('.graphify_input_path').read_text(encoding='utf-8').rstrip('\n')
+if not SCAN_ROOT or not Path(SCAN_ROOT).is_dir():
+    raise SystemExit('graphify: .graphify_input_path is empty or does not point to a real folder - rewrite it with the resolved absolute path (Step 1)')
 result = detect(Path(SCAN_ROOT))
 print(json.dumps(result))
 " > .graphify_detect.json
@@ -337,7 +341,9 @@ from pathlib import Path
 
 extraction = json.loads(Path('.graphify_extract.json').read_text())
 detection  = json.loads(Path('.graphify_detect.json').read_text())
-SCAN_ROOT = Path('.graphify_input_path').read_text().rstrip('\n')
+SCAN_ROOT = Path('.graphify_input_path').read_text(encoding='utf-8').rstrip('\n')
+if not SCAN_ROOT or not Path(SCAN_ROOT).is_dir():
+    raise SystemExit('graphify: .graphify_input_path is empty or does not point to a real folder - rewrite it with the resolved absolute path (Step 1)')
 
 G = build_from_json(extraction)
 communities = cluster(G)
@@ -391,7 +397,9 @@ from pathlib import Path
 extraction = json.loads(Path('.graphify_extract.json').read_text())
 detection  = json.loads(Path('.graphify_detect.json').read_text())
 analysis   = json.loads(Path('.graphify_analysis.json').read_text())
-SCAN_ROOT = Path('.graphify_input_path').read_text().rstrip('\n')
+SCAN_ROOT = Path('.graphify_input_path').read_text(encoding='utf-8').rstrip('\n')
+if not SCAN_ROOT or not Path(SCAN_ROOT).is_dir():
+    raise SystemExit('graphify: .graphify_input_path is empty or does not point to a real folder - rewrite it with the resolved absolute path (Step 1)')
 
 G = build_from_json(extraction)
 communities = {int(k): v for k, v in analysis['communities'].items()}
@@ -630,7 +638,7 @@ cost_path.write_text(json.dumps(cost, indent=2))
 print(f'This run: {input_tok:,} input tokens, {output_tok:,} output tokens')
 print(f'All time: {cost[\"total_input_tokens\"]:,} input, {cost[\"total_output_tokens\"]:,} output ({len(cost[\"runs\"])} runs)')
 "
-rm -f .graphify_detect.json .graphify_extract.json .graphify_ast.json .graphify_semantic.json .graphify_analysis.json .graphify_labels.json
+rm -f .graphify_detect.json .graphify_extract.json .graphify_ast.json .graphify_semantic.json .graphify_analysis.json .graphify_labels.json .graphify_input_path
 rm -f graphify-out/.needs_update 2>/dev/null || true
 ```
 
@@ -683,7 +691,9 @@ import sys, json
 from graphify.detect import detect_incremental, save_manifest
 from pathlib import Path
 
-SCAN_ROOT = Path('.graphify_input_path').read_text().rstrip('\n')
+SCAN_ROOT = Path('.graphify_input_path').read_text(encoding='utf-8').rstrip('\n')
+if not SCAN_ROOT or not Path(SCAN_ROOT).is_dir():
+    raise SystemExit('graphify: .graphify_input_path is empty or does not point to a real folder - rewrite it with the resolved absolute path (Step 1)')
 result = detect_incremental(Path(SCAN_ROOT))
 new_total = result.get('new_total', 0)
 print(json.dumps(result, indent=2))
@@ -776,7 +786,7 @@ Clean up after: `rm -f .graphify_old.json`
 
 ## For --cluster-only
 
-Skip Steps 1–3, but first write the resolved absolute target path to `.graphify_input_path` with your file-writing tool (same mechanism as Step 1) - Steps 5–9 read it. Load the existing graph from `graphify-out/graph.json` and re-run clustering:
+Skip Steps 1–3, but first write the resolved absolute target path to `.graphify_input_path` with your file-writing tool (same mechanism as Step 1) - Step 5 reads it. Load the existing graph from `graphify-out/graph.json` and re-run clustering:
 
 ```bash
 python3 -c "
@@ -1158,7 +1168,14 @@ Supported URL types (auto-detected):
 Start a background watcher that monitors a folder and auto-updates the graph when files change.
 
 ```bash
-python3 -m graphify.watch "$(cat .graphify_input_path)" --debounce 3
+python3 -c "
+import sys, subprocess
+from pathlib import Path
+SCAN_ROOT = Path('.graphify_input_path').read_text(encoding='utf-8').rstrip('\n')
+if not SCAN_ROOT or not Path(SCAN_ROOT).is_dir():
+    raise SystemExit('graphify: .graphify_input_path is empty or does not point to a real folder - write the resolved absolute folder there first (Step 1)')
+sys.exit(subprocess.call([sys.executable, '-m', 'graphify.watch', SCAN_ROOT, '--debounce', '3']))
+"
 ```
 
 The folder comes from `.graphify_input_path` - write the resolved absolute folder to that file with your file-writing tool before running this command (as in Step 1), and do not substitute the path into the command itself. Behavior depends on what changed:
